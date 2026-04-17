@@ -8,8 +8,18 @@ import { Music, BarChart3, Info } from 'lucide-react';
 
 export default function Home() {
   const [coords, setCoords] = useState({ v: 0, a: 0 });
-  const [tracks, setTracks] = useState([]);
+  const [tracks, setTracks] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  const [viewMode, setViewMode] = useState<'curation' | 'library'>('curation');
+  const [stats, setStats] = useState({ tracks: 0, relationships: 0 });
+
+  const fetchStats = async () => {
+    try {
+      const res = await fetch('/api/debug/stats');
+      const data = await res.json();
+      if (!data.error) setStats({ tracks: data.tracks, relationships: data.relationships });
+    } catch (e) { console.error(e); }
+  };
 
   const fetchRecommendations = async (v: number, a: number) => {
     setLoading(true);
@@ -24,10 +34,28 @@ export default function Home() {
     }
   };
 
+  const fetchAllTracks = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch('/api/tracks');
+      const data = await res.json();
+      setTracks(data);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Initial fetch
   useEffect(() => {
-    fetchRecommendations(0, 0);
-  }, []);
+    fetchStats();
+    if (viewMode === 'curation') {
+      fetchRecommendations(coords.v, coords.a);
+    } else {
+      fetchAllTracks();
+    }
+  }, [viewMode]);
 
   const handleCoordsChange = (v: number, a: number) => {
     setCoords({ v, a });
@@ -44,7 +72,11 @@ export default function Home() {
           </div>
           <h1 className="text-2xl font-black font-outfit tracking-tight">MoodSync.</h1>
         </div>
-        <nav className="flex gap-6 text-sm font-medium text-gray-400">
+        <nav className="flex gap-6 text-sm font-medium text-gray-400 items-center">
+          <div className="flex gap-2 mr-4">
+            <span className="text-[10px] bg-violet-500/10 border border-violet-500/20 px-2 py-0.5 rounded text-violet-400">Lib: {stats.tracks}</span>
+            <span className="text-[10px] bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded text-emerald-400">Rel: {stats.relationships}</span>
+          </div>
           <a href="#" className="hover:text-white flex items-center gap-2"><BarChart3 size={16} /> Dashboard</a>
           <a href="#" className="hover:text-white flex items-center gap-2"><Info size={16} /> Methodology</a>
         </nav>
@@ -81,9 +113,27 @@ export default function Home() {
       {/* Results Section */}
       <section>
         <div className="flex justify-between items-end mb-8">
-          <div>
-            <h3 className="text-2xl font-bold">맞춤형 큐레이션</h3>
-            <p className="text-gray-500 text-sm">현재 심리 상태에 기반한 추천 결과입니다.</p>
+          <div className="flex flex-col gap-4">
+            <div className="flex p-1 bg-white/5 rounded-lg w-fit">
+              <button 
+                onClick={() => setViewMode('curation')}
+                className={`px-4 py-1.5 rounded-md text-xs transition-all ${viewMode === 'curation' ? 'bg-white text-black font-bold shadow-lg' : 'text-gray-500 hover:text-white'}`}
+              >
+                🎯 맞춤 추천
+              </button>
+              <button 
+                onClick={() => setViewMode('library')}
+                className={`px-4 py-1.5 rounded-md text-xs transition-all ${viewMode === 'library' ? 'bg-white text-black font-bold shadow-lg' : 'text-gray-500 hover:text-white'}`}
+              >
+                📚 전체 목록
+              </button>
+            </div>
+            <div>
+              <h3 className="text-2xl font-bold">{viewMode === 'curation' ? '맞춤형 큐레이션' : '전체 라이브러리'}</h3>
+              <p className="text-gray-500 text-sm">
+                {viewMode === 'curation' ? '현재 심리 상태에 기반한 추천 결과입니다.' : '데이터베이스에 등록된 모든 곡입니다.'}
+              </p>
+            </div>
           </div>
           <div className="text-xs text-gray-400 font-mono">
             Tracks found: {tracks.length}

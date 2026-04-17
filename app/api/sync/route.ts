@@ -24,31 +24,37 @@ export async function POST(request: Request) {
         // youtube_id: youtube_id,
         cover_url: cover_url,
         updated_at: new Date().toISOString(),
-      }, { onConflict: 'lastfm_id' }) 
+      }, { onConflict: 'artist, title' }) 
       .select()
       .single();
 
     if (trackError) throw trackError;
 
-    // 3. Map tags to VA coordinates and save relations
-    for (const tag of filteredTags) {
-      // Find tag in our Mood Database (tags table)
-      const { data: tagMaster } = await supabase
-        .from('tags')
-        .select('id')
-        .eq('name', tag.name)
-        .single();
+    // 3. Map tags to VA coordinates and save relations (Optimized Bulk Operation)
+    const tagNames = filteredTags.map(t => t.name);
+    
+    // Fetch all matching tags at once
+    const { data: tagMasters } = await supabase
+      .from('tags')
+      .select('id, name')
+      .in('name', tagNames);
 
-      if (tagMaster) {
-        // Save track-tag relationship
-        await supabase
-          .from('track_tags')
-          .upsert({
-            track_id: trackData.id,
-            tag_id: tagMaster.id,
-            weight: tag.weight,
-          });
-      }
+    if (tagMasters && tagMasters.length > 0) {
+      const trackTagsToInsert = tagMasters.map(tm => {
+        const tagInfo = filteredTags.find(ft => ft.name === tm.name);
+        return {
+          track_id: trackData.id,
+          tag_id: tm.id,
+          weight: tagInfo?.weight || 0,
+        };
+      });
+
+      // Bulk upsert relationships
+      const { error: batchError } = await supabase
+        .from('track_tags')
+        .upsert(trackTagsToInsert);
+        
+      if (batchError) console.error('Batch tag link error:', batchError);
     }
 
     return NextResponse.json({ 
